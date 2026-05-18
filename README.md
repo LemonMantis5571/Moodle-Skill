@@ -38,6 +38,8 @@ Initial tool set:
 - `site_info`
 - `list_courses`
 - `get_course --courseId <id>`
+- `list_resources --courseId <id>`
+- `download_file --url <file_url> --output <path>`
 - `list_assignments [--courseId <id>]`
 - `get_submission_status --assignmentId <id>`
 - `get_submissions --assignmentId <id>`
@@ -54,6 +56,8 @@ Student summary commands:
 Submission command scope:
 
 - `get_submission_status` and `get_submissions` are assignment-level commands and must use `--assignmentId`.
+- `list_resources` is a course-level command and should return downloadable files, embedded page assets, and URL resources grouped by course structure.
+- `download_file` consumes a `fileurl` returned by Moodle content/resource endpoints and saves it locally to `--output`.
 - Course-wide submission views must use summary commands (`submitted_work`, `pending_work`, `ungraded_submissions`).
 
 All tools must return a JSON envelope with fields:
@@ -71,6 +75,12 @@ Grade capability mapping order:
 1. Prefer `gradereport_user_get_grade_items`.
 2. Fallback to `core_grades_get_grades`.
 3. If neither is exposed, use assignment/submission grade signals for summary workflows and mark reduced confidence.
+
+Resource retrieval guidance:
+
+1. Prefer `core_course_get_contents` for section/module/resource discovery.
+2. Treat returned `contents[].fileurl` values as the canonical download targets for stored Moodle files.
+3. Preserve URL resources separately from downloadable files.
 
 ## Normalized Summary Output
 
@@ -136,6 +146,16 @@ Recommended optional inputs:
    - `exam_prep`
    - `build_study_notes`
 
+Example low-level adapter commands:
+
+```bash
+moodle-tools site_info --json
+moodle-tools list_courses --json
+moodle-tools list_resources --courseId 42 --json
+moodle-tools download_file --url "https://campus.school.edu/webservice/pluginfile.php/..." --output "./downloads/example.pdf" --json
+moodle-tools get_submission_status --assignmentId 1001 --json
+```
+
 ## How Users Get Credentials
 
 ### Moodle URL
@@ -176,4 +196,5 @@ Recommended build order:
 1. Connection validation and diagnostics.
 2. Capability discovery and adaptive function mapping.
 3. Core low-level commands.
-4. Student summary commands (`submitted_work`, `pending_work`, `ungraded_submissions`, `whats_due`).
+4. Resource discovery and download commands (`list_resources`, `download_file`).
+5. Student summary commands (`submitted_work`, `pending_work`, `ungraded_submissions`, `whats_due`).

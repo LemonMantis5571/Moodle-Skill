@@ -154,6 +154,8 @@ Recommended preferred and fallback mappings:
 - `site_info` -> prefer `core_webservice_get_site_info`.
 - `list_courses` -> prefer `core_enrol_get_users_courses`.
 - `get_course` -> prefer `core_course_get_courses_by_field`; fallback `core_course_get_contents`.
+- `list_resources` -> prefer `core_course_get_contents`; fallback section/module metadata from `get_course`.
+- `download_file` -> prefer Moodle `pluginfile` URLs discovered from course content/resource endpoints.
 - `list_assignments` -> prefer `mod_assign_get_assignments`.
 - `get_submission_status` -> prefer `mod_assign_get_submission_status`.
 - `get_submissions` -> prefer `mod_assign_get_submissions`.
@@ -167,6 +169,13 @@ Grade mapping decision order:
 3. Else return partial grade view from assignment/submission metadata and mark reduced confidence.
 4. If no grade signal exists, return `SERVICE_DISABLED` for `get_grades`.
 
+Resource retrieval guidance:
+
+1. Use `core_course_get_contents` to enumerate sections, modules, embedded page assets, and downloadable resources.
+2. Treat returned `contents[].fileurl` values as canonical download targets for stored Moodle files.
+3. Preserve URL resources separately from downloadable files.
+4. Skip unreadable files with warning instead of failing the whole workflow.
+
 ## Tool Adapter Contract
 
 The recommended adapter surface is a CLI returning JSON-only responses:
@@ -175,6 +184,8 @@ The recommended adapter surface is a CLI returning JSON-only responses:
 moodle-tools site_info --json
 moodle-tools list_courses --json
 moodle-tools get_course --courseId 42 --json
+moodle-tools list_resources --courseId 42 --json
+moodle-tools download_file --url "https://campus.school.edu/webservice/pluginfile.php/..." --output "./downloads/example.pdf" --json
 moodle-tools list_assignments --courseId 42 --json
 moodle-tools get_submission_status --assignmentId 1001 --json
 moodle-tools get_submissions --assignmentId 1001 --json
@@ -474,6 +485,7 @@ When no Moodle tool adapter exists yet, implement this order:
 2. Build endpoint resolver (`MOODLE_URL` + `MOODLE_REST_PATH`) and secure connection checks.
 3. Build capability discovery cache from preflight.
 4. Implement adaptive mapping for v1 tools: `site_info`, `list_courses`, `get_course`, `list_assignments`, `get_submission_status`, `get_submissions`, `get_grades`, `get_calendar_events`.
-5. Implement summary commands: `submitted_work`, `pending_work`, `ungraded_submissions`, `whats_due`.
-6. Expose CLI JSON commands for each tool.
-7. Add tests for config, diagnostics, mapping fallbacks, and normalized student workflow summaries.
+5. Implement resource discovery and file download commands: `list_resources`, `download_file`.
+6. Implement summary commands: `submitted_work`, `pending_work`, `ungraded_submissions`, `whats_due`.
+7. Expose CLI JSON commands for each tool.
+8. Add tests for config, diagnostics, mapping fallbacks, resource discovery/download, and normalized student workflow summaries.

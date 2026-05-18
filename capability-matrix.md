@@ -18,8 +18,8 @@ Preferred mapping policy:
 | `site_info` | `core_webservice_get_site_info` | none | Core | Fail workflow if unavailable; prompt credential validation |
 | `list_courses` | `core_enrol_get_users_courses` | none | Core | Fail workflow if unavailable; prompt token scope/admin check |
 | `get_course` | `core_course_get_courses_by_field` | `core_course_get_contents` | Core | Continue with reduced summaries |
-| `list_resources` | course content APIs | section/module data from `get_course` | Core | Build digest without file-level details |
-| `download_file` | pluginfile access + content endpoint | none | Core for note building | Skip unreadable files; report skipped list |
+| `list_resources` | `core_course_get_contents` | section/module data from `get_course` | Core | Build digest without file-level details |
+| `download_file` | Moodle `pluginfile` URLs discovered from content endpoints | none | Core for note building | Skip unreadable files; report skipped list |
 | `list_assignments` | `mod_assign_get_assignments` | assignment metadata from course modules | Optional | Use calendar-only due tracking |
 | `get_assignment` | `mod_assign_get_assignments` | submission metadata where available | Optional | Omit submission/feedback detail |
 | `get_submission_status` | `mod_assign_get_submission_status` | assignment-level submission fields | Optional | Infer status from available fields; return assignment-scoped result |
@@ -49,6 +49,12 @@ Preferred mapping policy:
 - If preferred mapping succeeds, confidence is high.
 - If fallback mapping is used, include warning noting reduced confidence.
 - If inferred from heuristics only, include explicit low-confidence warning in each affected row.
+
+## Resource Retrieval Expectations
+
+- `list_resources` should return downloadable files, embedded page assets, and URL resources grouped by course structure.
+- `download_file` should consume a Moodle `fileurl` and save the resolved file locally.
+- URL resources should be preserved as links and not treated as downloadable stored files unless they are actual Moodle file URLs.
 
 ## Grade Fallback Expectations
 
