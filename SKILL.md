@@ -14,6 +14,8 @@ This skill does not require MCP. MCP can be used as one transport option, but th
 
 Core principle: enforce credential preflight first, then run deterministic workflows with graceful degradation when optional Moodle services are unavailable.
 
+University-agnostic in this document means Moodle-instance agnostic: no hardcoded hostnames, IDs, language assumptions, or institution-specific function assumptions.
+
 ## Architecture
 
 Use this architecture by default:
@@ -23,6 +25,13 @@ Use this architecture by default:
 3. The adapter exposes canonical tools (for example `site_info`, `list_courses`, `get_grades`).
 4. The adapter can be invoked via CLI JSON commands.
 5. MCP is optional and should be treated as a wrapper, not a requirement.
+
+## V1 Scope
+
+- CLI-first tool runner
+- Token-only authentication
+- Capability discovery from Moodle before selecting backing functions
+- Adaptive mapping for sites with different enabled web services
 
 ## When to Use
 
@@ -48,6 +57,15 @@ Required:
 
 - `MOODLE_URL` - Moodle base URL, for example `https://campus.school.edu`
 - `MOODLE_TOKEN` - Moodle web service token (prefer token from `Moodle mobile web service`)
+
+Supported v1 config surface:
+
+- `MOODLE_URL`
+- `MOODLE_TOKEN`
+- `MOODLE_REST_PATH` (default `/webservice/rest/server.php`)
+- `MOODLE_VERIFY_TLS` (default `true`)
+- `LOOKAHEAD_DAYS`
+- `TIMEZONE`
 
 Optional:
 
@@ -88,6 +106,8 @@ Map runtime tool names into these logical capabilities:
 - `download_file`
 - `list_assignments`
 - `get_assignment`
+- `get_submission_status`
+- `get_submissions`
 - `get_grades`
 - `get_calendar_events`
 - `list_quizzes`
@@ -97,6 +117,26 @@ Map runtime tool names into these logical capabilities:
 - `get_notifications`
 
 If your runtime uses different tool names, add an adapter mapping and keep workflow logic unchanged.
+
+## Connection and Discovery Requirements
+
+Before workflows, the adapter must validate that the configured host is a Moodle site and that the resolved REST endpoint is reachable.
+
+Endpoint resolution:
+
+1. Start from `MOODLE_URL` base URL.
+2. Append `MOODLE_REST_PATH`.
+3. Validate endpoint behavior using token-authenticated calls.
+
+Preflight failures must classify and return actionable diagnostics for:
+
+- wrong host or non-Moodle endpoint
+- invalid or expired token
+- valid token with insufficient permissions
+- TLS or certificate problems
+- required service disabled or function unavailable
+
+When possible, discover available functions during `site_info` and cache them for current run.
 
 ## Tool Adapter Contract
 
@@ -109,6 +149,9 @@ moodle-tools get_course --courseId 42 --json
 moodle-tools list_assignments --courseId 42 --json
 moodle-tools get_grades --courseId 42 --json
 moodle-tools get_calendar_events --courseId 42 --daysAhead 14 --json
+moodle-tools submitted_work --courseId 42 --json
+moodle-tools pending_work --courseId 42 --json
+moodle-tools ungraded_submissions --courseId 42 --json
 ```
 
 Required envelope for every tool response:
@@ -131,14 +174,17 @@ Canonical error codes:
 - `UPSTREAM_ERROR`
 - `INTERNAL_ERROR`
 
+Use `SERVICE_DISABLED` and `PERMISSION_DENIED` for unsupported capabilities instead of generic upstream failures.
+
 ## Preflight Pattern
 
 Before any workflow:
 
 1. Validate `MOODLE_URL` and `MOODLE_TOKEN` are present.
-2. Call `site_info` to validate auth and reachable Moodle host.
-3. Call `list_courses` to validate user scope.
-4. Continue only if both checks succeed.
+2. Resolve REST endpoint from `MOODLE_URL` and `MOODLE_REST_PATH`.
+3. Call `site_info` to validate Moodle host, auth, and discover capabilities.
+4. Call `list_courses` to validate user scope.
+5. Continue only if checks succeed.
 
 If checks fail, return an actionable setup message and stop.
 
@@ -178,7 +224,54 @@ Fallbacks:
 
 - Omit unavailable optional signals and include a data-gap note.
 
-### 3) exam_prep
+### 3) submitted_work
+
+Goal: summarize already-submitted work in a portable, student-centered format.
+
+Steps:
+
+1. Run preflight.
+2. Pull assignments for selected course.
+3. Pull submission state/details using discovered available functions.
+4. Normalize mixed submission modes (file upload, online text, mixed).
+5. Return concise rows with: course, assignment name/id, due date, submission status, submitted timestamp, attached filenames, grading status, grade display.
+
+Fallbacks:
+
+- If submission detail function is unavailable, return assignment-level status only with warning.
+
+### 4) pending_work
+
+Goal: show assignments not submitted or still incomplete.
+
+Steps:
+
+1. Run preflight.
+2. Pull assignments and submission states.
+3. Filter items by pending/incomplete status.
+4. Rank by urgency and due date.
+5. Return concise action list.
+
+Fallbacks:
+
+- If submission states unavailable, infer pending from due dates and available status fields.
+
+### 5) ungraded_submissions
+
+Goal: show submitted work still awaiting grading.
+
+Steps:
+
+1. Run preflight.
+2. Pull submissions and grade signals.
+3. Filter submitted items with missing grade.
+4. Return list with submission timestamp and assignment context.
+
+Fallbacks:
+
+- If grade signal unavailable, return probable-ungraded list with explicit confidence warning.
+
+### 6) exam_prep
 
 Goal: generate a study plan based on current performance.
 
@@ -195,7 +288,7 @@ Fallbacks:
 - If grades unavailable, infer priorities from assignments/quizzes.
 - If both grades and quizzes unavailable, provide a resource-based plan only.
 
-### 4) build_study_notes
+### 7) build_study_notes
 
 Goal: synthesize structured notes from Moodle resources.
 
@@ -221,6 +314,18 @@ Use this response shape for every workflow:
 - `warnings` - missing services, permission gaps, or stale data risks
 - `data_gaps` - what could not be retrieved and why
 
+For student work summary workflows (`submitted_work`, `pending_work`, `ungraded_submissions`), include normalized fields when available:
+
+- `course`
+- `assignment_name`
+- `assignment_id`
+- `due_date`
+- `submission_status`
+- `submitted_at`
+- `attached_filenames`
+- `grading_status`
+- `grade_display`
+
 ## Security Rules
 
 - Never output raw `MOODLE_TOKEN`.
@@ -232,8 +337,20 @@ Use this response shape for every workflow:
 
 - Treating `VPL web service` label as Moodle URL.
 - Assuming URL/token can always be auto-discovered.
+- Assuming one fixed Moodle function mapping works on every site.
+- Hardcoding language-specific or university-specific status text parsing.
 - Hard-failing on optional service unavailability instead of degrading gracefully.
 - Returning generic auth errors without user recovery instructions.
+
+## Troubleshooting Guidance
+
+Provide clear recovery instructions for:
+
+- wrong Moodle host
+- custom REST path needed (`MOODLE_REST_PATH`)
+- expired or invalid token
+- token tied to wrong service scope
+- valid token missing required function capability
 
 ## Verification
 
@@ -248,7 +365,9 @@ Minimum success checks:
 When no Moodle tool adapter exists yet, implement this order:
 
 1. Define canonical tool schema and error model.
-2. Build Moodle REST client (`/webservice/rest/server.php`) with token redaction.
-3. Implement v1 tools: `site_info`, `list_courses`, `get_course`, `list_assignments`, `get_grades`, `get_calendar_events`.
-4. Expose CLI JSON commands for each tool.
-5. Add tests for validation, error mapping, and preflight behavior.
+2. Build endpoint resolver (`MOODLE_URL` + `MOODLE_REST_PATH`) and secure connection checks.
+3. Build capability discovery cache from preflight.
+4. Implement adaptive mapping for v1 tools: `site_info`, `list_courses`, `get_course`, `list_assignments`, `get_submission_status`, `get_submissions`, `get_grades`, `get_calendar_events`.
+5. Implement summary commands: `submitted_work`, `pending_work`, `ungraded_submissions`, `whats_due`.
+6. Expose CLI JSON commands for each tool.
+7. Add tests for config, diagnostics, mapping fallbacks, and normalized student workflow summaries.

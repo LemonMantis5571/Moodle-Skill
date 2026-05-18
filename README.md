@@ -6,6 +6,8 @@ This repository is intentionally implementation-neutral: it defines behavior, wo
 
 MCP is optional. The default design is tools-first: build a Moodle adapter that exposes canonical tool actions and returns JSON.
 
+University-agnostic here means Moodle-instance agnostic: no hardcoded institution hostnames, IDs, language assumptions, or service assumptions.
+
 ## What This Provides
 
 - A root-level `SKILL.md` with deterministic Moodle workflows.
@@ -21,6 +23,8 @@ MCP is optional. The default design is tools-first: build a Moodle adapter that 
 3. Agent runtime invokes tools (CLI or equivalent integration).
 4. MCP can wrap these tools later, but is not required.
 
+V1 is CLI-first and token-only.
+
 ## Tool Adapter Contract (Recommended)
 
 Command style:
@@ -35,8 +39,17 @@ Initial tool set:
 - `list_courses`
 - `get_course --courseId <id>`
 - `list_assignments [--courseId <id>]`
+- `get_submission_status --assignmentId <id>`
+- `get_submissions --courseId <id>`
 - `get_grades --courseId <id>`
 - `get_calendar_events [--courseId <id>] [--daysAhead <n>]`
+
+Student summary commands:
+
+- `submitted_work --courseId <id>`
+- `pending_work --courseId <id>`
+- `ungraded_submissions [--courseId <id>]`
+- `whats_due [--courseId <id>] [--daysAhead <n>]`
 
 All tools must return a JSON envelope with fields:
 
@@ -45,6 +58,17 @@ All tools must return a JSON envelope with fields:
 - `warnings`
 - `error`
 - `meta`
+
+## V1 Configuration Surface
+
+- `MOODLE_URL` (required)
+- `MOODLE_TOKEN` (required)
+- `MOODLE_REST_PATH` (optional, default `/webservice/rest/server.php`)
+- `MOODLE_VERIFY_TLS` (optional, default `true`; set `false` only for controlled development)
+- `LOOKAHEAD_DAYS` (optional)
+- `TIMEZONE` (optional)
+
+Endpoint resolution is always: `MOODLE_URL + MOODLE_REST_PATH`.
 
 ## Required Inputs
 
@@ -67,6 +91,9 @@ Recommended optional inputs:
 5. Execute workflows:
    - `whats_due`
    - `course_digest`
+   - `submitted_work`
+   - `pending_work`
+   - `ungraded_submissions`
    - `exam_prep`
    - `build_study_notes`
 
@@ -87,9 +114,13 @@ If only a `VPL web service` token is visible, test it first but expect limited A
 
 ## Troubleshooting
 
+- Wrong host or non-Moodle endpoint: verify `MOODLE_URL` points to Moodle base URL.
+- Custom install path: set `MOODLE_REST_PATH` correctly and retry preflight.
 - Invalid token: regenerate token and retry preflight.
+- TLS/certificate issues: fix cert chain; use `MOODLE_VERIFY_TLS=false` only in development.
 - Token works but missing grades/quizzes/forums: admin likely has those services disabled.
 - VPL token limited scope: request token for `Moodle mobile web service`.
+- Valid token but missing function: return `SERVICE_DISABLED` or `PERMISSION_DENIED` with capability details.
 - Missing credentials: agent must trigger credential collection prompt before any workflow.
 
 ## Files
@@ -100,3 +131,10 @@ If only a `VPL web service` token is visible, test it first but expect limited A
 ## Next Build Step
 
 If you are starting from zero integration, implement the tool adapter first. The skill is orchestration-only and depends on callable Moodle tools.
+
+Recommended build order:
+
+1. Connection validation and diagnostics.
+2. Capability discovery and adaptive function mapping.
+3. Core low-level commands.
+4. Student summary commands (`submitted_work`, `pending_work`, `ungraded_submissions`, `whats_due`).
