@@ -2,6 +2,8 @@
 
 This matrix defines capability expectations for agent-agnostic Moodle workflows.
 
+Transport note: capabilities can be provided by any adapter (CLI, local service, MCP wrapper). The skill targets capability names, not transport.
+
 | Capability | Typical Moodle Service Dependency | Required Level | Fallback Behavior |
 |---|---|---|---|
 | `site_info` | core web service | Core | Fail workflow if unavailable; prompt credential validation |

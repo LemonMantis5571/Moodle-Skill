@@ -8,9 +8,21 @@ description: Use when users ask about Moodle courses, assignments, deadlines, gr
 ## Overview
 
 This skill defines a portable, agent-agnostic operating pattern for Moodle workflows.
-It is designed to work with any runtime (Codex, Claude Code, or similar) that can call Moodle capabilities through MCP or equivalent tool adapters.
+It is designed to work with any runtime (Codex, Claude Code, or similar) that can call Moodle capabilities through a tool adapter layer.
+
+This skill does not require MCP. MCP can be used as one transport option, but the default architecture is tools-first.
 
 Core principle: enforce credential preflight first, then run deterministic workflows with graceful degradation when optional Moodle services are unavailable.
+
+## Architecture
+
+Use this architecture by default:
+
+1. `SKILL.md` is the orchestration layer.
+2. A Moodle tool adapter is the execution layer.
+3. The adapter exposes canonical tools (for example `site_info`, `list_courses`, `get_grades`).
+4. The adapter can be invoked via CLI JSON commands.
+5. MCP is optional and should be treated as a wrapper, not a requirement.
 
 ## When to Use
 
@@ -85,6 +97,39 @@ Map runtime tool names into these logical capabilities:
 - `get_notifications`
 
 If your runtime uses different tool names, add an adapter mapping and keep workflow logic unchanged.
+
+## Tool Adapter Contract
+
+The recommended adapter surface is a CLI returning JSON-only responses:
+
+```text
+moodle-tools site_info --json
+moodle-tools list_courses --json
+moodle-tools get_course --courseId 42 --json
+moodle-tools list_assignments --courseId 42 --json
+moodle-tools get_grades --courseId 42 --json
+moodle-tools get_calendar_events --courseId 42 --daysAhead 14 --json
+```
+
+Required envelope for every tool response:
+
+- `ok` (boolean)
+- `data` (object, array, or null)
+- `warnings` (string array)
+- `error` (null or object with `code`, `message`, `retryable`, optional `details`)
+- `meta` (object with `tool`, `source`, `latencyMs`, `partial`, `timestamp`)
+
+Canonical error codes:
+
+- `AUTH_MISSING_CREDENTIALS`
+- `AUTH_INVALID_TOKEN`
+- `VALIDATION_ERROR`
+- `SERVICE_DISABLED`
+- `PERMISSION_DENIED`
+- `NOT_FOUND`
+- `RATE_LIMITED`
+- `UPSTREAM_ERROR`
+- `INTERNAL_ERROR`
 
 ## Preflight Pattern
 
@@ -197,3 +242,13 @@ Minimum success checks:
 1. `site_info` succeeds.
 2. `list_courses` returns at least an empty valid payload.
 3. At least one workflow runs and returns structured output with warnings/data gaps when needed.
+
+## Build Roadmap (Tools-First)
+
+When no Moodle tool adapter exists yet, implement this order:
+
+1. Define canonical tool schema and error model.
+2. Build Moodle REST client (`/webservice/rest/server.php`) with token redaction.
+3. Implement v1 tools: `site_info`, `list_courses`, `get_course`, `list_assignments`, `get_grades`, `get_calendar_events`.
+4. Expose CLI JSON commands for each tool.
+5. Add tests for validation, error mapping, and preflight behavior.
