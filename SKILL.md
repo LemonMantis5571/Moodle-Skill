@@ -138,6 +138,28 @@ Preflight failures must classify and return actionable diagnostics for:
 
 When possible, discover available functions during `site_info` and cache them for current run.
 
+## Capability Mapping Requirements
+
+Adapters must map logical capabilities to Moodle functions using discovery-driven selection.
+
+Required selection algorithm:
+
+1. Inspect `site_info.functions`.
+2. Choose preferred function if available.
+3. Choose fallback function if preferred is unavailable.
+4. If no viable function exists, return `SERVICE_DISABLED` or `PERMISSION_DENIED`.
+
+Recommended preferred and fallback mappings:
+
+- `site_info` -> prefer `core_webservice_get_site_info`.
+- `list_courses` -> prefer `core_enrol_get_users_courses`.
+- `get_course` -> prefer `core_course_get_courses_by_field`; fallback `core_course_get_contents`.
+- `list_assignments` -> prefer `mod_assign_get_assignments`.
+- `get_submission_status` -> prefer `mod_assign_get_submission_status`.
+- `get_submissions` -> prefer `mod_assign_get_submissions`.
+- `get_calendar_events` -> prefer `core_calendar_get_action_events_by_timesort`; fallback `core_calendar_get_calendar_events`.
+- `get_grades` -> prefer gradebook function exposed on site; fallback to assignment grade signals and submission feedback metadata when full gradebook APIs are unavailable.
+
 ## Tool Adapter Contract
 
 The recommended adapter surface is a CLI returning JSON-only responses:
@@ -147,6 +169,8 @@ moodle-tools site_info --json
 moodle-tools list_courses --json
 moodle-tools get_course --courseId 42 --json
 moodle-tools list_assignments --courseId 42 --json
+moodle-tools get_submission_status --assignmentId 1001 --json
+moodle-tools get_submissions --assignmentId 1001 --json
 moodle-tools get_grades --courseId 42 --json
 moodle-tools get_calendar_events --courseId 42 --daysAhead 14 --json
 moodle-tools submitted_work --courseId 42 --json
@@ -234,7 +258,7 @@ Steps:
 2. Pull assignments for selected course.
 3. Pull submission state/details using discovered available functions.
 4. Normalize mixed submission modes (file upload, online text, mixed).
-5. Return concise rows with: course, assignment name/id, due date, submission status, submitted timestamp, attached filenames, grading status, grade display.
+5. Return normalized rows with required fields defined in Adapter Normalization Requirements.
 
 Fallbacks:
 
@@ -316,15 +340,65 @@ Use this response shape for every workflow:
 
 For student work summary workflows (`submitted_work`, `pending_work`, `ungraded_submissions`), include normalized fields when available:
 
-- `course`
-- `assignment_name`
-- `assignment_id`
-- `due_date`
-- `submission_status`
-- `submitted_at`
-- `attached_filenames`
-- `grading_status`
-- `grade_display`
+- `courseId`
+- `courseName`
+- `assignmentId`
+- `assignmentName`
+- `dueAt`
+- `submissionStatus`
+- `submittedAt`
+- `submissionMode`
+- `attachedFiles`
+- `submissionTextPresent`
+- `gradingStatus`
+- `gradeDisplayRaw`
+- `gradeNumeric` (optional)
+- `gradeScaleMax` (optional)
+- `warnings`
+
+## Adapter Normalization Requirements
+
+All summary commands (`submitted_work`, `pending_work`, `ungraded_submissions`, `whats_due`) must use stable, normalized rows.
+
+Required row shape:
+
+```json
+{
+  "courseId": 12345,
+  "courseName": "Example Course",
+  "assignmentId": 67890,
+  "assignmentName": "Example Assignment",
+  "dueAt": "2026-01-25T23:30:00Z",
+  "submissionStatus": "submitted",
+  "submittedAt": "2026-01-24T22:26:02Z",
+  "submissionMode": "file",
+  "attachedFiles": ["example-submission.pdf"],
+  "submissionTextPresent": false,
+  "gradingStatus": "graded",
+  "gradeDisplayRaw": "10.0",
+  "gradeNumeric": 10.0,
+  "gradeScaleMax": 10.0,
+  "warnings": []
+}
+```
+
+Submission normalization rules:
+
+- `submissionMode` must be one of `file`, `online_text`, `mixed`, `unknown`.
+- `attachedFiles` must list filenames only.
+- `submissionTextPresent` must reflect whether online text content exists.
+
+Grade normalization rules:
+
+- Always preserve Moodle display value in `gradeDisplayRaw`.
+- Parse `gradeNumeric` only when locale-safe parsing is reliable.
+- Set `gradeScaleMax` only when explicit scale/max data is present.
+- Do not assume decimal separator, language, or fixed grading scale.
+
+Grade capability behavior:
+
+- Treat grade retrieval, grading status, and display formatting as separate concerns.
+- `ungraded_submissions` may rely on submission feedback metadata when gradebook APIs are unavailable.
 
 ## Security Rules
 
@@ -351,6 +425,31 @@ Provide clear recovery instructions for:
 - expired or invalid token
 - token tied to wrong service scope
 - valid token missing required function capability
+
+## Diagnostic Behavior Requirements
+
+Adapters must map connection failures to stable buckets and return consistent diagnostics:
+
+- wrong host
+- non-Moodle host
+- REST endpoint missing
+- TLS trust failure
+- invalid token
+- token valid but function unavailable
+- token from limited service scope (for example VPL-only)
+
+These must map to stable error codes and user-facing remediation guidance.
+
+## Portability Rules
+
+Adapter implementations must not hardcode:
+
+- institution hostnames
+- fixed course IDs
+- English-only or Spanish-only parsing assumptions
+- one grading format
+- one submission plugin type
+- one Moodle service configuration
 
 ## Verification
 

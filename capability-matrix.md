@@ -6,27 +6,34 @@ Transport note: capabilities can be provided by any adapter (CLI, local service,
 
 Discovery note: adapters should discover available Moodle functions during preflight and map logical capabilities to preferred or fallback functions.
 
-| Capability | Typical Moodle Service Dependency | Required Level | Fallback Behavior |
-|---|---|---|---|
-| `site_info` | core web service | Core | Fail workflow if unavailable; prompt credential validation |
-| `list_courses` | core web service | Core | Fail workflow if unavailable; prompt token scope/admin check |
-| `get_course` | core course APIs | Core | Continue with reduced summaries |
-| `list_resources` | core content APIs | Core | Build digest without file-level details |
-| `download_file` | pluginfile access + content endpoint | Core for note building | Skip unreadable files; report skipped list |
-| `list_assignments` | `mod_assign` | Optional | Use calendar-only due tracking |
-| `get_assignment` | `mod_assign` | Optional | Omit submission/feedback detail |
-| `get_submission_status` | `mod_assign` + submission APIs | Optional | Infer from assignment-level fields when available |
-| `get_submissions` | `mod_assign` + submission APIs | Optional | Return limited summaries from assignment metadata |
-| `get_grades` | `gradereport_user` | Optional | Infer weak areas from quizzes/assignments only |
-| `get_calendar_events` | `core_calendar` | Optional | Use assignment due dates only |
-| `list_quizzes` | `mod_quiz` | Optional | Exam prep excludes quiz evidence |
-| `get_quiz_attempts` | `mod_quiz` | Optional | Exam prep excludes attempt-level trends |
-| `list_forums` | `mod_forum` | Optional | Digest excludes forum activity |
-| `get_forum_discussions` | `mod_forum` | Optional | Digest excludes discussion-level detail |
-| `get_notifications` | messaging services | Optional | Digest excludes notification stream |
-| `submitted_work` | assignment + submission capabilities | Summary command | Return best-effort normalized output with data gaps |
-| `pending_work` | assignment + submission capabilities | Summary command | Use due-date heuristics if submission state unavailable |
-| `ungraded_submissions` | submission + grade capabilities | Summary command | Return probable ungraded list with confidence warning |
+Preferred mapping policy:
+
+- inspect `site_info.functions`
+- use preferred function first
+- use fallback if preferred is unavailable
+- return `SERVICE_DISABLED` or `PERMISSION_DENIED` if no mapping is viable
+
+| Capability | Preferred Function(s) | Fallback Function(s) | Required Level | Fallback Behavior |
+|---|---|---|---|---|
+| `site_info` | `core_webservice_get_site_info` | none | Core | Fail workflow if unavailable; prompt credential validation |
+| `list_courses` | `core_enrol_get_users_courses` | none | Core | Fail workflow if unavailable; prompt token scope/admin check |
+| `get_course` | `core_course_get_courses_by_field` | `core_course_get_contents` | Core | Continue with reduced summaries |
+| `list_resources` | course content APIs | section/module data from `get_course` | Core | Build digest without file-level details |
+| `download_file` | pluginfile access + content endpoint | none | Core for note building | Skip unreadable files; report skipped list |
+| `list_assignments` | `mod_assign_get_assignments` | assignment metadata from course modules | Optional | Use calendar-only due tracking |
+| `get_assignment` | `mod_assign_get_assignments` | submission metadata where available | Optional | Omit submission/feedback detail |
+| `get_submission_status` | `mod_assign_get_submission_status` | assignment-level submission fields | Optional | Infer status from available fields |
+| `get_submissions` | `mod_assign_get_submissions` | `get_submission_status` + assignment metadata | Optional | Return limited summaries with confidence warning |
+| `get_grades` | exposed gradebook function(s) | assignment feedback grade signals | Optional | Infer weak areas from quizzes/assignments only |
+| `get_calendar_events` | `core_calendar_get_action_events_by_timesort` | `core_calendar_get_calendar_events` | Optional | Use assignment due dates only |
+| `list_quizzes` | `mod_quiz` functions | none | Optional | Exam prep excludes quiz evidence |
+| `get_quiz_attempts` | `mod_quiz` functions | none | Optional | Exam prep excludes attempt-level trends |
+| `list_forums` | `mod_forum` functions | none | Optional | Digest excludes forum activity |
+| `get_forum_discussions` | `mod_forum` functions | none | Optional | Digest excludes discussion-level detail |
+| `get_notifications` | messaging services | none | Optional | Digest excludes notification stream |
+| `submitted_work` | assignment + submission capabilities | assignment-level summaries | Summary command | Return best-effort normalized output with data gaps |
+| `pending_work` | assignment + submission capabilities | due-date heuristics | Summary command | Use heuristics if submission state unavailable |
+| `ungraded_submissions` | submission + grade capabilities | submission feedback metadata | Summary command | Return probable ungraded list with confidence warning |
 
 ## User-Facing Warning Templates
 
@@ -36,6 +43,12 @@ Discovery note: adapters should discover available Moodle functions during prefl
   - "I continued with partial data because `<capability>` is unavailable. Results may omit some Moodle details."
 - Likely limited token scope:
   - "Your token appears to have limited scope (for example VPL-only). Please generate a token for Moodle mobile web service for full coverage."
+
+## Partial Data Confidence Rules
+
+- If preferred mapping succeeds, confidence is high.
+- If fallback mapping is used, include warning noting reduced confidence.
+- If inferred from heuristics only, include explicit low-confidence warning in each affected row.
 
 ## Connection Diagnostic Templates
 

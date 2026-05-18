@@ -40,7 +40,7 @@ Initial tool set:
 - `get_course --courseId <id>`
 - `list_assignments [--courseId <id>]`
 - `get_submission_status --assignmentId <id>`
-- `get_submissions --courseId <id>`
+- `get_submissions --assignmentId <id>`
 - `get_grades --courseId <id>`
 - `get_calendar_events [--courseId <id>] [--daysAhead <n>]`
 
@@ -58,6 +58,34 @@ All tools must return a JSON envelope with fields:
 - `warnings`
 - `error`
 - `meta`
+
+Low-level submission detail commands use `assignmentId`. Course-wide views use summary commands (`submitted_work`, `pending_work`, `ungraded_submissions`).
+
+## Normalized Summary Output
+
+Student summary commands should emit normalized rows with these fields:
+
+- `courseId`
+- `courseName`
+- `assignmentId`
+- `assignmentName`
+- `dueAt`
+- `submissionStatus`
+- `submittedAt`
+- `submissionMode` (`file` | `online_text` | `mixed` | `unknown`)
+- `attachedFiles`
+- `submissionTextPresent`
+- `gradingStatus`
+- `gradeDisplayRaw`
+- `gradeNumeric` (optional)
+- `gradeScaleMax` (optional)
+- `warnings`
+
+Grade formatting rules:
+
+- Preserve Moodle display string in `gradeDisplayRaw`.
+- Only parse numeric values when locale-safe.
+- Do not assume decimal separators or fixed grading scales.
 
 ## V1 Configuration Surface
 
