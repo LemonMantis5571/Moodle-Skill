@@ -51,6 +51,11 @@ Student summary commands:
 - `ungraded_submissions [--courseId <id>]`
 - `whats_due [--courseId <id>] [--daysAhead <n>]`
 
+Submission command scope:
+
+- `get_submission_status` and `get_submissions` are assignment-level commands and must use `--assignmentId`.
+- Course-wide submission views must use summary commands (`submitted_work`, `pending_work`, `ungraded_submissions`).
+
 All tools must return a JSON envelope with fields:
 
 - `ok`
