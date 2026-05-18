@@ -22,9 +22,9 @@ Preferred mapping policy:
 | `download_file` | pluginfile access + content endpoint | none | Core for note building | Skip unreadable files; report skipped list |
 | `list_assignments` | `mod_assign_get_assignments` | assignment metadata from course modules | Optional | Use calendar-only due tracking |
 | `get_assignment` | `mod_assign_get_assignments` | submission metadata where available | Optional | Omit submission/feedback detail |
-| `get_submission_status` | `mod_assign_get_submission_status` | assignment-level submission fields | Optional | Infer status from available fields |
-| `get_submissions` | `mod_assign_get_submissions` | `get_submission_status` + assignment metadata | Optional | Return limited summaries with confidence warning |
-| `get_grades` | exposed gradebook function(s) | assignment feedback grade signals | Optional | Infer weak areas from quizzes/assignments only |
+| `get_submission_status` | `mod_assign_get_submission_status` | assignment-level submission fields | Optional | Infer status from available fields; return assignment-scoped result |
+| `get_submissions` | `mod_assign_get_submissions` | `get_submission_status` + assignment metadata | Optional | Return assignment-scoped details only; course-wide views belong to summary commands |
+| `get_grades` | `gradereport_user_get_grade_items` | `core_grades_get_grades`, then assignment feedback grade signals | Optional | Use full gradebook when possible; otherwise return partial grade signals with confidence warning |
 | `get_calendar_events` | `core_calendar_get_action_events_by_timesort` | `core_calendar_get_calendar_events` | Optional | Use assignment due dates only |
 | `list_quizzes` | `mod_quiz` functions | none | Optional | Exam prep excludes quiz evidence |
 | `get_quiz_attempts` | `mod_quiz` functions | none | Optional | Exam prep excludes attempt-level trends |
@@ -49,6 +49,13 @@ Preferred mapping policy:
 - If preferred mapping succeeds, confidence is high.
 - If fallback mapping is used, include warning noting reduced confidence.
 - If inferred from heuristics only, include explicit low-confidence warning in each affected row.
+
+## Grade Fallback Expectations
+
+- If `gradereport_user_get_grade_items` is available, treat grade confidence as high.
+- If `core_grades_get_grades` is used, treat confidence as medium and include source warning.
+- If only assignment/submission grade signals are available, treat confidence as low and mark output as partial.
+- If no grade source exists, `get_grades` returns `SERVICE_DISABLED` while summary commands continue with non-grade data.
 
 ## Connection Diagnostic Templates
 

@@ -158,7 +158,14 @@ Recommended preferred and fallback mappings:
 - `get_submission_status` -> prefer `mod_assign_get_submission_status`.
 - `get_submissions` -> prefer `mod_assign_get_submissions`.
 - `get_calendar_events` -> prefer `core_calendar_get_action_events_by_timesort`; fallback `core_calendar_get_calendar_events`.
-- `get_grades` -> prefer gradebook function exposed on site; fallback to assignment grade signals and submission feedback metadata when full gradebook APIs are unavailable.
+- `get_grades` -> prefer `gradereport_user_get_grade_items`; fallback `core_grades_get_grades`; final fallback to assignment grade signals and submission feedback metadata when full gradebook APIs are unavailable.
+
+Grade mapping decision order:
+
+1. If `gradereport_user_get_grade_items` is available, use it as primary gradebook source.
+2. Else if `core_grades_get_grades` is available, use it as fallback grade source.
+3. Else return partial grade view from assignment/submission metadata and mark reduced confidence.
+4. If no grade signal exists, return `SERVICE_DISABLED` for `get_grades`.
 
 ## Tool Adapter Contract
 

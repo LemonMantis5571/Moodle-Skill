@@ -59,7 +59,13 @@ All tools must return a JSON envelope with fields:
 - `error`
 - `meta`
 
-Low-level submission detail commands use `assignmentId`. Course-wide views use summary commands (`submitted_work`, `pending_work`, `ungraded_submissions`).
+Low-level submission detail commands use `assignmentId` only. Course-wide views use summary commands (`submitted_work`, `pending_work`, `ungraded_submissions`). Do not use `courseId` for `get_submissions`.
+
+Grade capability mapping order:
+
+1. Prefer `gradereport_user_get_grade_items`.
+2. Fallback to `core_grades_get_grades`.
+3. If neither is exposed, use assignment/submission grade signals for summary workflows and mark reduced confidence.
 
 ## Normalized Summary Output
 
